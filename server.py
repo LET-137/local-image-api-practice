@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 import mysql.connector
 import os
+from urllib.parse import quote
 
 load_dotenv()
 MYSQL_PASSWORD = os.getenv('MYSQL_PASSWORD')
@@ -83,10 +84,23 @@ def get_image(id):
 
     if row:
         filename, image_data = row
+        print(f'filename: {filename}')
         content_type = get_content_type(filename)
+        # RFC 5987に従って、UTF-8でエンコードされたファイル名を設定
+        # 非ASCII文字が含まれる場合はfilename*パラメータを使用
+        if any(ord(c) > 127 for c in filename):
+            # 非ASCII文字が含まれる場合はRFC 5987形式を使用
+            # filenameパラメータにはASCII互換の代替名を設定（拡張子は保持）
+            _, ext = os.path.splitext(filename)
+            safe_filename = f"image{ext}" if ext else "image"
+            encoded_filename = quote(filename.encode('utf-8'), safe='')
+            content_disposition = f'inline; filename="{safe_filename}"; filename*=UTF-8\'\'{encoded_filename}'
+        else:
+            # ASCII文字のみの場合は通常形式
+            content_disposition = f'inline; filename="{filename}"'
         headers = {
             'Content-Type': content_type,
-            'Content-Disposition': f'inline; filename="{filename}"'
+            'Content-Disposition': content_disposition
         }
         return image_data, 200, headers
     else:

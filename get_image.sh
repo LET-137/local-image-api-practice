@@ -13,11 +13,23 @@ mkdir -p "$SAVE_DIR"
 
 # Content-Dispositionヘッダーからfilenameを取得
 echo "Content-Dispositionからfilenameを取得します..."
-content_disposition=$(curl -s -I http://127.0.0.1:5000/image/$IMAGE_ID | grep -i "Content-Disposition" | sed -n 's/.*filename="\([^"]*\)".*/\1/p' | tr -d '\r\n' | head -1)
+header_line=$(curl -s -I http://127.0.0.1:5000/image/$IMAGE_ID | grep -i "Content-Disposition" | tr -d '\r\n')
 
-if [ -z "$content_disposition" ]; then
-    echo "エラー: filenameを取得できませんでした"
-    exit 1
+# まずRFC 5987形式のfilename*=UTF-8''...をチェック
+content_disposition=$(echo "$header_line" | sed -n "s/.*filename\*=UTF-8''\([^;]*\).*/\1/p" | head -1)
+
+if [ -n "$content_disposition" ]; then
+    # URLデコード処理（Pythonを使用）
+    content_disposition=$(python3 -c "import sys; from urllib.parse import unquote; print(unquote(sys.stdin.read().strip()))" <<< "$content_disposition")
+    echo "RFC 5987形式のfilename*から取得: $content_disposition"
+else
+    # filename*が見つからない場合は通常のfilename=をチェック
+    content_disposition=$(echo "$header_line" | sed -n 's/.*filename="\([^"]*\)".*/\1/p' | head -1)
+    if [ -z "$content_disposition" ]; then
+        echo "エラー: filenameを取得できませんでした"
+        exit 1
+    fi
+    echo "通常のfilenameから取得: $content_disposition"
 fi
 
 # filenameを名前と拡張子に分割
