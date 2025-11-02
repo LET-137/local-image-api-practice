@@ -9,32 +9,45 @@ if [ -z "$IMAGE_ID" ]; then
 fi
 
 # 保存ディレクトリが存在しない場合は作成
-mkdir -p "$save_dir"
+mkdir -p "$SAVE_DIR"
 
-# Content-Dispositionヘッダーからファイル名を取得
-file_name=$(curl -s -I http://127.0.0.1:5000/image/$IMAGE_ID | grep -i "Content-Disposition" | sed -n 's/.*file_name="\([^"]*\)".*/\1/p' | tr -d '\r\n')
+# Content-Dispositionヘッダーからfilenameを取得
+echo "Content-Dispositionからfilenameを取得します..."
+content_disposition=$(curl -s -I http://127.0.0.1:5000/image/$IMAGE_ID | grep -i "Content-Disposition" | sed -n 's/.*filename="\([^"]*\)".*/\1/p' | tr -d '\r\n' | head -1)
 
-# ファイル名が取得できなかった場合、Content-Typeから拡張子を推測
-if [ -z "$file_name" ]; then
-    content_type=$(curl -s -I http://127.0.0.1:5000/image/$IMAGE_ID | grep -i "Content-Type" | sed -n 's/.*Content-Type: *\([^;]*\).*/\1/p' | tr -d '\r\n' | head -1)
-    case "$content_type" in
-        *image/png*) ext="png" ;;
-        *image/jpeg*) ext="jpg" ;;
-        *image/gif*) ext="gif" ;;
-        *image/webp*) ext="webp" ;;
-        *image/bmp*) ext="bmp" ;;
-        *image/svg*) ext="svg" ;;
-        *) ext="jpg" ;;  # デフォルト
-    esac
-    file_name="image_${IMAGE_ID}.${ext}"
-fi
-
-# 画像をダウンロードして保存
-curl -s http://127.0.0.1:5000/image/$IMAGE_ID --output "$SAVE_DIR/$file_name"
-
-if [ $? -eq 0 ]; then
-    echo "画像を保存しました: $SAVE_DIR/$file_name"
-else
-    echo "エラー: 画像の取得に失敗しました"
+if [ -z "$content_disposition" ]; then
+    echo "エラー: filenameを取得できませんでした"
     exit 1
 fi
+
+# filenameを名前と拡張子に分割
+filename="${content_disposition%.*}"  # 拡張子を除いた部分（最後の.より前）
+ext="${content_disposition##*.}"      # 拡張子（最後の.以降）
+
+# 拡張子が空の場合の処理（ドットがないファイル名の場合）
+if [ "$filename" == "$content_disposition" ]; then
+    filename="$content_disposition"
+    ext=""
+fi
+
+echo "名前部分: $filename"
+echo "拡張子部分: $ext"
+
+# ファイル名を作成
+file_name="${filename}.${ext}"
+echo "作成されたファイル名: $file_name"
+
+# 画像をダウンロードして保存（HTTPステータスコードをチェック）
+echo "画像をダウンロードしています..."
+http_code=$(curl -s -w "%{http_code}" -o "$SAVE_DIR/$file_name" http://127.0.0.1:5000/image/$IMAGE_ID)
+
+if [ "$http_code" != "200" ]; then
+    # エラー時は保存されたファイルを削除
+    rm -f "$SAVE_DIR/$file_name"
+    echo "エラー: 画像の取得に失敗しました (HTTPステータス: $http_code)"
+    echo "指定された画像ID ($IMAGE_ID) はDBに存在しません"
+    exit 1
+fi
+
+echo "画像を保存しました: $SAVE_DIR/$file_name"
+echo "処理が完了しました。"
