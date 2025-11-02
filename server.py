@@ -8,6 +8,7 @@ MYSQL_PASSWORD = os.getenv('MYSQL_PASSWORD')
 MYSQL_DATABASE = os.getenv('MYSQL_DATABASE')
 
 app = Flask(__name__)
+app.config['JSON_AS_ASCII'] = False  # 日本語をUnicodeエスケープせずに表示
 
 # 拡張子からContent-Typeを取得する関数
 def get_content_type(filename):
@@ -29,25 +30,47 @@ db_config = {
     'user': 'root',
     'password': MYSQL_PASSWORD,
     'host': 'localhost',
-    'database': MYSQL_DATABASE
+    'database': MYSQL_DATABASE,
+    'charset': 'utf8mb4',
+    'collation': 'utf8mb4_unicode_ci',
+    'use_unicode': True
 }
 
 @app.route('/upload_binary', methods=['POST'])
 def upload_binary():
     # リクエストボディの生バイナリを取得
     image_data = request.data
-    filename = request.headers.get('X-Filename', 'unknown.jpg')  # ヘッダで渡す例
+    # HTTPヘッダーからファイル名を取得
+    import base64
+    filename_raw = request.headers.get('X-Filename', 'unknown.jpg')
+    is_encoded = request.headers.get('X-Filename-Encoded', '0') == '1'
+    
+    # Base64エンコードされている場合はデコード、そうでない場合はそのまま使用
+    if is_encoded:
+        try:
+            filename = base64.b64decode(filename_raw).decode('utf-8')
+        except Exception:
+            # デコードに失敗した場合はそのまま使用
+            filename = filename_raw
+    else:
+        # エンコードされていない場合は、URLデコードを試みる
+        from urllib.parse import unquote
+        if isinstance(filename_raw, bytes):
+            filename = unquote(filename_raw.decode('utf-8'))
+        else:
+            filename = unquote(filename_raw)
 
     # MySQLにバイナリを保存
     conn = mysql.connector.connect(**db_config)
     cur = conn.cursor()
     sql = "INSERT INTO images (filename, data) VALUES (%s, %s)"
     cur.execute(sql, (filename, image_data))
+    image_id = cur.lastrowid
     conn.commit()
     cur.close()
     conn.close()
 
-    return jsonify({'message': 'Binary upload success', 'filename': filename})
+    return jsonify({'message': 'Binary upload success', 'filename': filename, 'id': image_id})
 
 @app.route('/image/<int:id>', methods=['GET'])
 def get_image(id):
