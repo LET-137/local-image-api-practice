@@ -12,10 +12,10 @@ fi
 mkdir -p "$save_dir"
 
 # Content-Dispositionヘッダーからファイル名を取得
-filename=$(curl -s -I http://127.0.0.1:5000/image/$IMAGE_ID | grep -i "Content-Disposition" | sed -n 's/.*filename="\([^"]*\)".*/\1/p' | tr -d '\r\n')
+file_name=$(curl -s -I http://127.0.0.1:5000/image/$IMAGE_ID | grep -i "Content-Disposition" | sed -n 's/.*file_name="\([^"]*\)".*/\1/p' | tr -d '\r\n')
 
 # ファイル名が取得できなかった場合、Content-Typeから拡張子を推測
-if [ -z "$filename" ]; then
+if [ -z "$file_name" ]; then
     content_type=$(curl -s -I http://127.0.0.1:5000/image/$IMAGE_ID | grep -i "Content-Type" | sed -n 's/.*Content-Type: *\([^;]*\).*/\1/p' | tr -d '\r\n' | head -1)
     case "$content_type" in
         *image/png*) ext="png" ;;
@@ -26,14 +26,14 @@ if [ -z "$filename" ]; then
         *image/svg*) ext="svg" ;;
         *) ext="jpg" ;;  # デフォルト
     esac
-    filename="image_${IMAGE_ID}.${ext}"
+    file_name="image_${IMAGE_ID}.${ext}"
 fi
 
 # 画像をダウンロードして保存
-curl -s http://127.0.0.1:5000/image/$IMAGE_ID --output "$SAVE_DIR/$filename"
+curl -s http://127.0.0.1:5000/image/$IMAGE_ID --output "$SAVE_DIR/$file_name"
 
 if [ $? -eq 0 ]; then
-    echo "画像を保存しました: $SAVE_DIR/$filename"
+    echo "画像を保存しました: $SAVE_DIR/$file_name"
 else
     echo "エラー: 画像の取得に失敗しました"
     exit 1
